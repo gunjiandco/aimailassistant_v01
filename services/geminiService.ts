@@ -1,17 +1,20 @@
-
-
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { EmailStatus, AiAnalysisResult, BulkDraft, Template, Attachment, Email, AppSettings } from '../types';
 
 const API_KEY = process.env.API_KEY;
 
-if (!API_KEY) {
-  // 実際のアプリでは、より良いエラーハンドリングやフォールバックを実装するかもしれません。
-  // このプロジェクトでは、キーが存在することを前提とします。
-  console.warn("API_KEY環境変数が設定されていません。AI機能は無効になります。");
+// APIキーがない場合や初期化に失敗した場合でもアプリがクラッシュしないように、aiインスタンスを安全に初期化します。
+let ai: GoogleGenAI | null = null;
+if (API_KEY) {
+  try {
+    ai = new GoogleGenAI({ apiKey: API_KEY });
+  } catch (error) {
+    console.error("GoogleGenAI client initialization failed:", error);
+    ai = null; // 初期化に失敗した場合は、aiをnullに設定します。
+  }
+} else {
+  console.warn("API_KEY environment variable is not set. AI features will be disabled.");
 }
-
-const ai = new GoogleGenAI({ apiKey: API_KEY });
 
 const parseJsonResponse = <T,>(text: string): T | null => {
     let jsonStr = text.trim();
@@ -48,7 +51,7 @@ ${knowledgeBaseString}
 
 
 export const analyzeEmail = async (email: Email): Promise<AiAnalysisResult | null> => {
-  if (!API_KEY) return null;
+  if (!ai) return null;
 
   const plainTextBody = email.body.replace(/<[^>]*>?/gm, ' ');
   const attachmentInfo = email.attachments && email.attachments.length > 0
@@ -69,7 +72,7 @@ export const analyzeEmail = async (email: Email): Promise<AiAnalysisResult | nul
 
     【指示】
     1.  **status**: メールの状態を "${EmailStatus.NeedsReply}", "${EmailStatus.InfoReceived}", "${EmailStatus.Replied}", "${EmailStatus.Archived}" のいずれかで判断してください。
-    2.  **tags**: メールの内容を要約する、1〜3個の短いキーワードを小文字で抽出してください。
+    2.  **tags**: メールの内容を要약する、1〜3個の短いキーワードを小文字で抽出してください。
     3.  **suggestedTasks**: メールから発生する、実行すべき具体的なタスクを注意深く抽出してください。
         - **最重要**: 依頼、指示、期限に関する記述（例：「〜をお願いします」「〜してください」「〜を提出してください」「明日中に」「〜日までにお願いします」）は**必ず**タスクとして抽出してください。
         - 誰が読んでも何をすべきか明確にわかるように、具体的かつ簡潔なタスク名を付けてください。
@@ -159,7 +162,7 @@ export const analyzeEmail = async (email: Email): Promise<AiAnalysisResult | nul
 };
 
 export const generateReplyDraft = async (originalEmail: string, prompt: string, recipientName: string, attachments: Attachment[] | undefined, appSettings: AppSettings): Promise<string | null> => {
-    if (!API_KEY) return null;
+    if (!ai) return "AI機能は現在利用できません。APIキーが設定されているか確認してください。";
 
     const baseInstruction = buildBaseSystemInstruction(appSettings);
     const systemInstruction = `${baseInstruction}
@@ -205,7 +208,7 @@ ${attachmentInfo}
 };
 
 export const generateBulkDraft = async (prompt: string, appSettings: AppSettings): Promise<BulkDraft | null> => {
-    if (!API_KEY) return null;
+    if (!ai) return null;
 
     const baseInstruction = buildBaseSystemInstruction(appSettings);
     const systemInstruction = `${baseInstruction}
@@ -238,7 +241,7 @@ export const generateBulkDraft = async (prompt: string, appSettings: AppSettings
 };
 
 export const generateTemplateDraft = async (prompt: string, appSettings: AppSettings): Promise<Pick<Template, 'title' | 'body' | 'tags'> | null> => {
-    if (!API_KEY) return null;
+    if (!ai) return null;
 
     const baseInstruction = buildBaseSystemInstruction(appSettings);
     const systemInstruction = `${baseInstruction}
@@ -269,7 +272,7 @@ export const generateTemplateDraft = async (prompt: string, appSettings: AppSett
 };
 
 export const generateTagsForTemplate = async (title: string, body: string): Promise<string[] | null> => {
-    if (!API_KEY) return null;
+    if (!ai) return null;
 
     const systemInstruction = `ユーザーが提供するメールテンプレートのタイトルと本文に基づいて、関連性の高いキーワードタグを1〜3個生成してください。
 レスポンスは、「tags」（文字列の配列）という単一のキーを持つJSONオブジェクトでなければなりません。タグは短く、小文字にしてください。`;
@@ -304,7 +307,7 @@ ${plainTextBody}
 };
 
 export const searchEmailsWithAi = async (query: string, emails: Email[]): Promise<string[] | null> => {
-    if (!API_KEY) return null;
+    if (!ai) return null;
 
     const systemInstruction = `You are an intelligent email search assistant.
     Analyze the user's query and the provided list of emails.
