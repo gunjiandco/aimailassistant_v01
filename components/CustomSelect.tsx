@@ -1,4 +1,5 @@
 
+
 import React, { useState, useRef, useEffect } from 'react';
 import ChevronDownIcon from './icons/ChevronDownIcon';
 
@@ -13,9 +14,10 @@ interface CustomSelectProps {
     value: string;
     onChange: (value: string) => void;
     placeholder?: string;
+    id?: string;
 }
 
-const CustomSelect: React.FC<CustomSelectProps> = ({ options, value, onChange, placeholder }) => {
+const CustomSelect: React.FC<CustomSelectProps> = ({ options, value, onChange, placeholder, id }) => {
     const [isOpen, setIsOpen] = useState(false);
     const wrapperRef = useRef<HTMLDivElement>(null);
     const selectedOption = options.find(opt => opt.value === value);
@@ -41,6 +43,7 @@ const CustomSelect: React.FC<CustomSelectProps> = ({ options, value, onChange, p
         <div className="relative w-full" ref={wrapperRef}>
             <button
                 type="button"
+                id={id}
                 onClick={() => setIsOpen(!isOpen)}
                 className="w-full flex items-center justify-between text-left px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
                 aria-haspopup="listbox"

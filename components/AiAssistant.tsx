@@ -5,15 +5,17 @@ import { Email, EmailStatus, AiAnalysisResult, SuggestedTask, TaskStatus, TaskTy
 import { analyzeEmail } from '../services/geminiService';
 import Tag from './Tag';
 import SparklesIcon from './icons/SparklesIcon';
-import ReplyComposer from './ReplyComposer';
 import { useAppDispatch, useAppState } from '../contexts/AppContext';
 import CustomSelect, { CustomSelectOption } from './CustomSelect';
 import ClockIcon from './icons/ClockIcon';
 import CheckCircleIcon from './icons/CheckCircleIcon';
 import ExclamationCircleIcon from './icons/ExclamationCircleIcon';
 import ArchiveBoxIcon from './icons/ArchiveBoxIcon';
+import EyeIcon from './icons/EyeIcon';
 import ClipboardDocumentListIcon from './icons/ClipboardDocumentListIcon';
 import PlusCircleIcon from './icons/PlusCircleIcon';
+import PencilSquareIcon from './icons/PencilSquareIcon';
+import ShieldCheckIcon from './icons/ShieldCheckIcon';
 
 
 interface AiAssistantProps {
@@ -38,15 +40,40 @@ const AiAssistantSkeleton: React.FC = () => (
         <div className="h-5 bg-slate-200 dark:bg-slate-700 rounded w-2/5 mb-3"></div>
         <div className="h-14 bg-slate-200 dark:bg-slate-700 rounded-md"></div>
     </div>
-    <div className="border-t border-slate-200 dark:border-slate-600 pt-4 mt-4">
-        <div className="h-5 bg-slate-200 dark:bg-slate-700 rounded w-2/5 mb-3"></div>
-        <div className="flex gap-2">
-            <div className="h-9 bg-slate-200 dark:bg-slate-700 rounded-md flex-grow"></div>
-            <div className="h-9 bg-slate-200 dark:bg-slate-700 rounded-md w-20"></div>
-        </div>
-    </div>
   </div>
 );
+
+const TagEditor: React.FC<{
+  emailId: string;
+  currentTags: string[];
+  onClose: () => void;
+}> = ({ emailId, currentTags, onClose }) => {
+  const dispatch = useAppDispatch();
+  const [tagsInput, setTagsInput] = useState(currentTags.join(', '));
+  const { currentUser } = useAppState();
+
+  const handleSave = () => {
+    const newTags = tagsInput.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
+    dispatch({ type: 'UPDATE_EMAIL_TAGS', payload: { id: emailId, tags: newTags, user: currentUser } });
+    onClose();
+  };
+
+  return (
+    <div className="mt-2 space-y-2 animate-fade-in-up">
+      <input
+        type="text"
+        value={tagsInput}
+        onChange={(e) => setTagsInput(e.target.value)}
+        className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
+        placeholder="タグをカンマ区切りで入力"
+      />
+      <div className="flex justify-end gap-2">
+        <button onClick={onClose} className="px-3 py-1 text-xs font-semibold text-slate-700 bg-white dark:bg-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600 rounded-md hover:bg-slate-50 dark:hover:bg-slate-600">キャンセル</button>
+        <button onClick={handleSave} className="px-3 py-1 text-xs font-semibold text-white bg-primary-600 rounded-md hover:bg-primary-700">保存</button>
+      </div>
+    </div>
+  );
+};
 
 
 const AiAssistant: React.FC<AiAssistantProps> = ({ email }) => {
@@ -55,6 +82,7 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ email }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [analysis, setAnalysis] = useState<AiAnalysisResult | null>(null);
   const [addedTaskTitles, setAddedTaskTitles] = useState<string[]>([]);
+  const [isEditingTags, setIsEditingTags] = useState(false);
 
   
   const onUpdateStatus = (id: string, status: EmailStatus) => {
@@ -81,6 +109,7 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ email }) => {
 
   useEffect(() => {
     setAddedTaskTitles([]);
+    setIsEditingTags(false);
     if (email && (email.aiTags === undefined || email.suggestedTasks === undefined)) {
         fetchAnalysis();
     } else {
@@ -116,20 +145,27 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ email }) => {
     setAddedTaskTitles(prev => [...prev, task.title]);
 };
 
-  const statusOptions: CustomSelectOption[] = [
-    { value: EmailStatus.NeedsReply, label: EmailStatus.NeedsReply, icon: <ClockIcon className="w-5 h-5 text-amber-500" /> },
-    { value: EmailStatus.Replied, label: EmailStatus.Replied, icon: <CheckCircleIcon className="w-5 h-5 text-green-500" /> },
-    { value: EmailStatus.InfoReceived, label: EmailStatus.InfoReceived, icon: <ExclamationCircleIcon className="w-5 h-5 text-blue-500" /> },
-    { value: EmailStatus.Archived, label: EmailStatus.Archived, icon: <ArchiveBoxIcon className="w-5 h-5 text-slate-500" /> },
-  ];
+  const statusOptions: CustomSelectOption[] = Object.values(EmailStatus).map(status => ({
+    value: status,
+    label: status,
+    icon: {
+      [EmailStatus.NeedsReply]: <ClockIcon className="w-5 h-5 text-amber-500" />,
+      [EmailStatus.Replied]: <CheckCircleIcon className="w-5 h-5 text-green-500" />,
+      [EmailStatus.InfoReceived]: <ExclamationCircleIcon className="w-5 h-5 text-blue-500" />,
+      [EmailStatus.Reviewing]: <EyeIcon className="w-5 h-5 text-purple-500" />,
+      [EmailStatus.Drafting]: <PencilSquareIcon className="w-5 h-5 text-slate-500" />,
+      [EmailStatus.Approved]: <ShieldCheckIcon className="w-5 h-5 text-teal-500" />,
+      [EmailStatus.Archived]: <ArchiveBoxIcon className="w-5 h-5 text-slate-500" />,
+    }[status]
+  }));
+
   
   const suggestedTasks = analysis?.suggestedTasks || [];
   const filteredTasks = suggestedTasks.filter(task => !addedTaskTitles.includes(task.title));
-
-
+  
   if (!email) {
     return (
-      <div className="w-full md:w-1/3 p-6 flex flex-col items-center justify-center text-center bg-white dark:bg-slate-800/50 border-l border-slate-200 dark:border-slate-700 h-full">
+      <div className="w-full md:w-1/3 bg-white dark:bg-slate-800/50 border-l border-slate-200 dark:border-slate-700 h-full overflow-y-auto hidden lg:flex flex-col items-center justify-center text-center p-6">
         <SparklesIcon className="w-16 h-16 text-slate-300 dark:text-slate-600" />
         <h3 className="mt-4 text-lg font-medium text-slate-800 dark:text-slate-200">AIアシスタント</h3>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">受信メールを選択すると、AIによる分析情報やアクションが表示されます。</p>
@@ -169,13 +205,25 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ email }) => {
       </div>
 
       <div className="mt-4">
-        <h3 className="text-sm font-semibold text-slate-600 dark:text-slate-300">AIによる生成タグ</h3>
-        {email.aiTags && email.aiTags.length > 0 ? (
-            <div className="flex flex-wrap gap-2 mt-2">
-                {email.aiTags.map(tag => <Tag key={tag} type="keyword" text={tag} />)}
-            </div>
+        <div className="flex justify-between items-center">
+            <h3 className="text-sm font-semibold text-slate-600 dark:text-slate-300">AIによる生成タグ</h3>
+            {!isEditingTags && (
+                <button onClick={() => setIsEditingTags(true)} className="p-1 rounded-md text-slate-500 hover:bg-slate-200 dark:text-slate-400 dark:hover:bg-slate-700">
+                    <PencilSquareIcon className="w-4 h-4" />
+                </button>
+            )}
+        </div>
+
+        {isEditingTags ? (
+          <TagEditor emailId={email.id} currentTags={email.aiTags || []} onClose={() => setIsEditingTags(false)} />
         ) : (
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">タグの提案はありません。</p>
+          email.aiTags && email.aiTags.length > 0 ? (
+              <div className="flex flex-wrap gap-2 mt-2">
+                  {email.aiTags.map(tag => <Tag key={tag} type="keyword" text={tag} />)}
+              </div>
+          ) : (
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">タグの提案はありません。</p>
+          )
         )}
       </div>
       
@@ -204,11 +252,6 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ email }) => {
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">タスクの提案はありません。</p>
         )}
       </div>
-
-      <div className="border-t border-slate-200 dark:border-slate-600 pt-4 mt-4">
-        <ReplyComposer email={email} />
-      </div>
-
     </div>
   );
 };

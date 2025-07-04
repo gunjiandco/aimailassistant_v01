@@ -1,6 +1,6 @@
 
 
-import React, { useMemo, useEffect } from 'react';
+import React, { useMemo, useEffect, useState } from 'react';
 import EmailList from './components/EmailList';
 import EmailDetail from './components/EmailDetail';
 import AiAssistant from './components/AiAssistant';
@@ -10,7 +10,8 @@ import TemplatesView from './components/TemplatesView';
 import SettingsView from './components/SettingsView';
 import BulkSendModal from './components/BulkSendModal';
 import ImportContactsModal from './components/ImportContactsModal';
-import { Email, EmailStatus, Task, TaskType, TaskStatus, Contact, Template, MailingList } from './types';
+import NewEmailView from './components/NewEmailView';
+import { Email, EmailStatus, Task, TaskType, TaskStatus, Contact, Template, MailingList, SentEmail } from './types';
 import CheckCircleIcon from './components/icons/CheckCircleIcon';
 import InboxIcon from './components/icons/InboxIcon';
 import ChartBarIcon from './components/icons/ChartBarIcon';
@@ -20,6 +21,8 @@ import DocumentTextIcon from './components/icons/DocumentTextIcon';
 import Cog6ToothIcon from './components/icons/Cog6ToothIcon';
 import { useAppState, useAppDispatch } from './contexts/AppContext';
 import ToastContainer from './components/ToastContainer';
+import ReplyComposer from './components/ReplyComposer';
+import { useEmailFiltering } from './hooks/useEmailFiltering';
 
 
 type View = 'inbox' | 'dashboard' | 'contacts' | 'templates' | 'settings';
@@ -52,10 +55,31 @@ const App: React.FC = () => {
   const { 
     emails, sentEmails, contacts, mailingLists, tasks, templates, 
     selectedItemId, bulkSelectedIds, view, inboxSubView, 
-    isBulkSendModalOpen, bulkSendRecipients, isImportModalOpen, 
+    isBulkSendModalOpen, isImportModalOpen, 
     currentUser, isUserMenuOpen, filterStatus, filterTag, notifications,
     aiSearchResultIds, appSettings
   } = state;
+
+  const [isMobile, setIsMobile] = useState(false);
+  const [isMobileDetailVisible, setIsMobileDetailVisible] = useState(false);
+  const [isReplying, setIsReplying] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+  
+  useEffect(() => {
+    // Reset mobile view when switching main views or sub-views
+    setIsMobileDetailVisible(false);
+  }, [view, inboxSubView]);
+  
+  const { sortedAndFilteredEmails, sortedSentEmails } = useEmailFiltering(
+    emails, sentEmails, filterStatus, filterTag, aiSearchResultIds, searchTerm
+  );
 
   const handleAddTask = (title: string, details: string, dueDate: string) => {
     dispatch({ type: 'ADD_TASK', payload: { title, details, dueDate, status: TaskStatus.Todo, type: TaskType.Manual } });
@@ -89,39 +113,25 @@ const App: React.FC = () => {
       dispatch({ type: 'ADD_NOTIFICATION', payload: { message: 'メーリングリストを追加しました', type: 'success' } });
   };
 
-  const handleInitiateBulkSend = (contactIds: string[]) => {
-      dispatch({ type: 'INITIATE_BULK_SEND', payload: contactIds });
-  };
-
-  const handleOpenImportModal = () => {
-      dispatch({ type: 'OPEN_IMPORT_MODAL' });
-  };
-  
-  const handleCloseBulkSendModal = () => {
-      dispatch({ type: 'CLOSE_BULK_SEND' });
-  };
-
-  const handleCloseImportModal = () => {
-      dispatch({ type: 'CLOSE_IMPORT_MODAL' });
-  };
+  const handleOpenBulkSendModal = () => dispatch({ type: 'OPEN_BULK_SEND_MODAL' });
+  const handleOpenImportModal = () => dispatch({ type: 'OPEN_IMPORT_MODAL' });
+  const handleCloseBulkSendModal = () => dispatch({ type: 'CLOSE_BULK_SEND' });
+  const handleCloseImportModal = () => dispatch({ type: 'CLOSE_IMPORT_MODAL' });
 
   const handleImportContacts = (listId: string, newContacts: Omit<Contact, 'id'>[]) => {
       dispatch({ type: 'IMPORT_CONTACTS', payload: { listId, newContacts } });
-      dispatch({
-          type: 'ADD_NOTIFICATION',
-          payload: { message: `${newContacts.length}件の連絡先をインポートしました`, type: 'success' },
-      });
+      dispatch({ type: 'ADD_NOTIFICATION', payload: { message: `${newContacts.length}件の連絡先をインポートしました`, type: 'success' } });
   };
   
   const handleStatCardClick = (status: EmailStatus) => {
     dispatch({ type: 'SET_VIEW', payload: 'inbox' });
     dispatch({ type: 'SET_FILTER_STATUS', payload: status });
     dispatch({ type: 'SET_FILTER_TAG', payload: 'all' });
-    dispatch({ type: 'AI_SEARCH_CLEAR'}); // Also clear AI search results
+    dispatch({ type: 'AI_SEARCH_CLEAR'}); 
 
-    // Find the first email that matches the filter and select it.
     const firstMatchingEmail = emails.find(e => e.status === status);
-    dispatch({ type: 'SET_SELECTED_ITEM', payload: firstMatchingEmail ? firstMatchingEmail.id : null });
+    if(firstMatchingEmail) handleItemSelect(firstMatchingEmail.id);
+    else dispatch({ type: 'SET_SELECTED_ITEM', payload: null });
   };
 
   // Auto-generate tasks for emails needing replies
@@ -129,63 +139,166 @@ const App: React.FC = () => {
     const twoDaysAgo = new Date();
     twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
 
-    const newTasks: Omit<Task, 'id' | 'type'>[] = [];
     emails.forEach(email => {
         if (email.status === EmailStatus.NeedsReply && new Date(email.timestamp) < twoDaysAgo) {
             const taskExists = tasks.some(task => task.relatedEmailId === email.id && task.type === TaskType.AutoReminder);
             if (!taskExists) {
                 const dueDate = new Date();
-                dueDate.setDate(dueDate.getDate() + 1); // Due tomorrow
-                newTasks.push({
+                dueDate.setDate(dueDate.getDate() + 1); 
+                dispatch({ 
+                  type: 'ADD_TASK', 
+                  payload: {
                     title: `${email.sender.name}さんへのフォローアップ`,
                     details: `メールへの返信: 「${email.subject}」`,
                     dueDate: dueDate.toISOString().split('T')[0],
                     status: TaskStatus.Todo,
+                    type: TaskType.AutoReminder,
                     relatedEmailId: email.id,
+                  }
                 });
             }
         }
     });
-
-    if (newTasks.length > 0) {
-      newTasks.forEach(task => dispatch({ type: 'ADD_TASK', payload: { ...task, type: TaskType.AutoReminder } }));
-    }
   }, [emails, tasks, dispatch]);
 
   const selectedItem = useMemo(() => {
-    if (inboxSubView === 'inbox') {
-      return emails.find(email => email.id === selectedItemId) || null;
-    }
-    return sentEmails.find(email => email.id === selectedItemId) || null;
-  }, [emails, sentEmails, selectedItemId, inboxSubView]);
+    if (selectedItemId === 'new') return null;
+    const allItems = [...emails, ...sentEmails];
+    return allItems.find(item => item.id === selectedItemId) || null;
+  }, [emails, sentEmails, selectedItemId]);
+
 
   const allAiTags = useMemo(() => {
     const tags = new Set<string>();
-    emails.forEach(email => {
-        email.aiTags?.forEach(tag => tags.add(tag));
-    });
+    emails.forEach(email => email.aiTags?.forEach(tag => tags.add(tag)));
     return Array.from(tags).sort();
   }, [emails]);
-
-  const filteredEmails = useMemo(() => {
-    let baseEmails = emails;
-
-    // AI search results take precedence if they exist
-    if (aiSearchResultIds) {
-        // Preserve order from search results
-        baseEmails = aiSearchResultIds.map(id => emails.find(e => e.id === id)).filter((e): e is Email => e !== undefined);
-    }
-    
-    return baseEmails.filter(email => {
-        const statusMatch = filterStatus === 'all' || email.status === filterStatus;
-        const tagMatch = filterTag === 'all' || (email.aiTags && email.aiTags.includes(filterTag));
-        return statusMatch && tagMatch;
-    });
-  }, [emails, filterStatus, filterTag, aiSearchResultIds]);
+  
   
   const handleItemSelect = (id: string) => {
+    const allItems = [...emails, ...sentEmails];
+    const item = allItems.find(item => item.id === id);
     dispatch({ type: 'SET_SELECTED_ITEM', payload: id });
     if (view !== 'inbox') dispatch({ type: 'SET_VIEW', payload: 'inbox' });
+    
+    if (item && 'draft' in item && item.draft) {
+      setIsReplying(true);
+    } else {
+      setIsReplying(false);
+    }
+
+    if (isMobile) {
+      setIsMobileDetailVisible(true);
+    }
+  };
+  
+  const handleStartReply = () => {
+    if (selectedItem && 'sender' in selectedItem) {
+        dispatch({
+            type: 'UPDATE_EMAIL_STATUS',
+            payload: {
+                id: selectedItem.id,
+                status: EmailStatus.Drafting,
+                user: currentUser
+            }
+        });
+        setIsReplying(true);
+    }
+  };
+  
+  const handleCancelReply = () => {
+      if (selectedItem && 'sender' in selectedItem && !selectedItem.draft) {
+          dispatch({
+              type: 'UPDATE_EMAIL_STATUS',
+              payload: {
+                  id: selectedItem.id,
+                  status: EmailStatus.NeedsReply,
+                  user: currentUser
+              }
+          });
+      }
+      setIsReplying(false);
+  };
+
+  const renderInboxView = () => {
+    const items = inboxSubView === 'inbox' ? sortedAndFilteredEmails : sortedSentEmails;
+    const selectedEmailForAssistant = selectedItem && 'sender' in selectedItem ? selectedItem as Email : null;
+    const isComposingNew = selectedItemId === 'new';
+
+    const emailListComponent = (
+      <EmailList
+        items={items}
+        selectedItemId={selectedItemId}
+        onItemSelect={handleItemSelect}
+        bulkSelectedIds={bulkSelectedIds}
+        inboxSubView={inboxSubView}
+        filterStatus={filterStatus}
+        setFilterStatus={(status) => dispatch({ type: 'SET_FILTER_STATUS', payload: status })}
+        filterTag={filterTag}
+        setFilterTag={(tag) => dispatch({ type: 'SET_FILTER_TAG', payload: tag })}
+        allAiTags={allAiTags}
+        isAiSearching={state.isAiSearching}
+        aiSearchResultIds={state.aiSearchResultIds}
+        searchTerm={searchTerm}
+        setSearchTerm={setSearchTerm}
+      />
+    );
+    
+    const detailPanelContent = () => {
+        if (isComposingNew) {
+            return <NewEmailView onBack={isMobile ? () => setIsMobileDetailVisible(false) : undefined} contacts={state.contacts} />;
+        }
+        
+        if (!selectedItem) {
+            return (
+                <div className="flex-1 p-6 flex-col items-center justify-center text-center bg-slate-50 dark:bg-slate-900/50 hidden md:flex">
+                    <InboxIcon className="w-20 h-20 text-slate-300 dark:text-slate-600" />
+                    <h3 className="mt-4 text-xl font-medium text-slate-800 dark:text-slate-200">メールを選択して表示</h3>
+                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">まだ何も表示されていません。左のリストから項目を選択してください。</p>
+                </div>
+            );
+        }
+
+        if (isReplying && selectedEmailForAssistant) {
+            return (
+                <ReplyComposer
+                    email={selectedEmailForAssistant}
+                    onCancel={handleCancelReply}
+                    onSent={() => {
+                        setIsReplying(false);
+                        if (isMobile) setIsMobileDetailVisible(false);
+                    }}
+                />
+            );
+        }
+
+        return (
+            <>
+                <EmailDetail
+                    item={selectedItem}
+                    onBack={isMobile ? () => setIsMobileDetailVisible(false) : undefined}
+                    allEmails={emails}
+                    allSentEmails={sentEmails}
+                    onReply={handleStartReply}
+                />
+                <AiAssistant email={selectedEmailForAssistant} />
+            </>
+        );
+    };
+
+    if (isMobile) {
+      if (isMobileDetailVisible) {
+        return detailPanelContent();
+      }
+      return emailListComponent;
+    }
+
+    return (
+      <>
+        {emailListComponent}
+        {detailPanelContent()}
+      </>
+    );
   };
   
   const renderView = () => {
@@ -207,7 +320,7 @@ const App: React.FC = () => {
                 mailingLists={mailingLists}
                 onAddContact={handleAddContact}
                 onAddMailingList={handleAddMailingList}
-                onInitiateBulkSend={handleInitiateBulkSend}
+                onOpenBulkSendModal={handleOpenBulkSendModal}
                 onOpenImportModal={handleOpenImportModal}
               />;
           case 'templates':
@@ -216,30 +329,7 @@ const App: React.FC = () => {
               return <SettingsView />;
           case 'inbox':
           default:
-              const items = inboxSubView === 'inbox' ? filteredEmails : sentEmails;
-              const selectedEmailForAssistant = selectedItem && 'sender' in selectedItem ? selectedItem as Email : null;
-              return (
-                  <>
-                    <EmailList
-                        items={items}
-                        selectedItemId={selectedItemId}
-                        onItemSelect={handleItemSelect}
-                        bulkSelectedIds={bulkSelectedIds}
-                        inboxSubView={inboxSubView}
-                        filterStatus={filterStatus}
-                        setFilterStatus={(status) => dispatch({ type: 'SET_FILTER_STATUS', payload: status })}
-                        filterTag={filterTag}
-                        setFilterTag={(tag) => dispatch({ type: 'SET_FILTER_TAG', payload: tag })}
-                        allAiTags={allAiTags}
-                        isAiSearching={state.isAiSearching}
-                        aiSearchResultIds={state.aiSearchResultIds}
-                    />
-                    <EmailDetail item={selectedItem} />
-                    <AiAssistant 
-                      email={selectedEmailForAssistant} 
-                    />
-                  </>
-              );
+              return renderInboxView();
       }
   };
 
@@ -255,7 +345,7 @@ const App: React.FC = () => {
             <div className="w-8 h-8 bg-primary-200 dark:bg-primary-800 rounded-full flex items-center justify-center font-bold text-primary-600 dark:text-primary-200">
                 {currentUser.initials}
             </div>
-            <span className="font-semibold text-sm pr-2">{currentUser.name}</span>
+            <span className="font-semibold text-sm pr-2 hidden md:block">{currentUser.name}</span>
           </button>
           {isUserMenuOpen && (
             <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-slate-800 rounded-md shadow-lg py-1 ring-1 ring-black ring-opacity-5">
@@ -312,7 +402,6 @@ const App: React.FC = () => {
       </div>
       <BulkSendModal 
         isOpen={isBulkSendModalOpen} 
-        recipients={bulkSendRecipients} 
         onClose={handleCloseBulkSendModal}
       />
        <ImportContactsModal

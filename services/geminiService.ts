@@ -1,5 +1,8 @@
+
+
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { EmailStatus, AiAnalysisResult, BulkDraft, Template, Attachment, Email, AppSettings } from '../types';
+import { parseJsonWithFence } from "../utils/helpers";
 
 const API_KEY = process.env.API_KEY;
 
@@ -15,21 +18,6 @@ if (API_KEY) {
 } else {
   console.warn("API_KEY environment variable is not set. AI features will be disabled.");
 }
-
-const parseJsonResponse = <T,>(text: string): T | null => {
-    let jsonStr = text.trim();
-    const fenceRegex = /^```(\w*)?\s*\n?(.*?)\n?\s*```$/s;
-    const match = jsonStr.match(fenceRegex);
-    if (match && match[2]) {
-        jsonStr = match[2].trim();
-    }
-    try {
-        return JSON.parse(jsonStr) as T;
-    } catch (e) {
-        console.error("JSONレスポンスの解析に失敗しました:", e, "元のテキスト:", text);
-        return null;
-    }
-};
 
 const buildBaseSystemInstruction = (appSettings: AppSettings): string => {
     const knowledgeBaseString = appSettings.knowledgeBase && appSettings.knowledgeBase.length > 0
@@ -148,7 +136,7 @@ export const analyzeEmail = async (email: Email): Promise<AiAnalysisResult | nul
         }
     });
     
-    const parsedData = parseJsonResponse<AiAnalysisResult>(response.text);
+    const parsedData = parseJsonWithFence<AiAnalysisResult>(response.text);
     if (parsedData && Object.values(EmailStatus).includes(parsedData.status)) {
         return parsedData;
     }
@@ -232,7 +220,7 @@ export const generateBulkDraft = async (prompt: string, appSettings: AppSettings
             },
         });
 
-        const parsedData = parseJsonResponse<BulkDraft>(response.text);
+        const parsedData = parseJsonWithFence<BulkDraft>(response.text);
         return parsedData;
     } catch (error) {
         console.error("Geminiでの一括ドラフト生成中にエラーが発生しました:", error);
@@ -262,7 +250,7 @@ export const generateTemplateDraft = async (prompt: string, appSettings: AppSett
             },
         });
 
-        const parsedData = parseJsonResponse<Pick<Template, 'title' | 'body' | 'tags'>>(response.text);
+        const parsedData = parseJsonWithFence<Pick<Template, 'title' | 'body' | 'tags'>>(response.text);
         return parsedData;
 
     } catch (error) {
@@ -297,7 +285,7 @@ ${plainTextBody}
             },
         });
 
-        const parsedData = parseJsonResponse<{ tags: string[] }>(response.text);
+        const parsedData = parseJsonWithFence<{ tags: string[] }>(response.text);
         return parsedData?.tags || null;
 
     } catch (error) {
@@ -344,7 +332,7 @@ export const searchEmailsWithAi = async (query: string, emails: Email[]): Promis
             },
         });
         
-        const parsedData = parseJsonResponse<{ emailIds: string[] }>(response.text);
+        const parsedData = parseJsonWithFence<{ emailIds: string[] }>(response.text);
         
         if (parsedData && Array.isArray(parsedData.emailIds)) {
             // Validate that returned IDs actually exist in the original list to prevent hallucinations

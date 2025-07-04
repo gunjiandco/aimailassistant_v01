@@ -9,6 +9,7 @@ import { useAppDispatch, useAppState } from '../contexts/AppContext';
 import { searchEmailsWithAi } from '../services/geminiService';
 import SparklesIcon from './icons/SparklesIcon';
 import XMarkIcon from './icons/XMarkIcon';
+import PencilIcon from './icons/PencilIcon';
 
 
 interface EmailListProps {
@@ -24,6 +25,8 @@ interface EmailListProps {
   allAiTags: string[];
   isAiSearching: boolean;
   aiSearchResultIds: string[] | null;
+  searchTerm: string;
+  setSearchTerm: (term: string) => void;
 }
 
 const EmailList: React.FC<EmailListProps> = ({ 
@@ -38,11 +41,12 @@ const EmailList: React.FC<EmailListProps> = ({
   setFilterTag,
   allAiTags,
   isAiSearching,
-  aiSearchResultIds
+  aiSearchResultIds,
+  searchTerm,
+  setSearchTerm,
 }) => {
   const dispatch = useAppDispatch();
   const { emails: allEmails } = useAppState();
-  const [searchTerm, setSearchTerm] = React.useState('');
   const [aiSearchQuery, setAiSearchQuery] = React.useState('');
 
   const handleBulkSelect = (id: string) => {
@@ -68,38 +72,18 @@ const EmailList: React.FC<EmailListProps> = ({
         dispatch({ type: 'ADD_NOTIFICATION', payload: { message: 'AI検索中にエラーが発生しました。', type: 'error' } });
     }
   };
+  
+  const handleComposeNew = () => {
+    dispatch({ type: 'SET_SELECTED_ITEM', payload: 'new' });
+  };
 
   const handleClearAiSearch = () => {
     setAiSearchQuery('');
     dispatch({ type: 'AI_SEARCH_CLEAR' });
   };
   
-  const filteredItemsBySearch = items.filter(item => {
-    const term = searchTerm.toLowerCase();
-    // 検索語が空の場合はすべて表示
-    if (!term.trim()) return true;
-
-    // 本文からHTMLタグを除去して検索対象とする
-    const plainTextBody = item.body.replace(/<[^>]*>?/gm, ' ');
-
-    if (item.subject.toLowerCase().includes(term) || plainTextBody.toLowerCase().includes(term)) {
-        return true;
-    }
-    
-    if ('sender' in item) {
-        // 受信メールの場合、差出人名と表示IDで検索
-        const email = item as Email;
-        return email.sender.name.toLowerCase().includes(term) || email.displayId.toLowerCase().includes(term);
-    } else {
-        // 送信済みメールの場合、宛名で検索
-        const sentEmail = item as SentEmail;
-        return sentEmail.recipients.map(r => r.name).join(' ').toLowerCase().includes(term);
-    }
-  });
-
-
   return (
-    <div className="bg-white dark:bg-slate-800/50 border-r border-slate-200 dark:border-slate-700 w-full md:w-1/3 lg:w-1/4 h-full flex flex-col">
+    <div className="bg-white dark:bg-slate-800/50 border-r border-slate-200 dark:border-slate-700 w-full md:w-[380px] lg:w-[420px] h-full flex flex-col flex-shrink-0 relative">
       <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex-shrink-0">
          <div className="flex border-b border-slate-200 dark:border-slate-700 mb-4">
           <button onClick={() => dispatch({ type: 'SET_INBOX_SUB_VIEW', payload: 'inbox'})} className={`flex-1 flex items-center justify-center gap-2 p-3 text-sm font-semibold transition-colors ${inboxSubView === 'inbox' ? 'text-primary-600 dark:text-primary-400 border-b-2 border-primary-500' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}`}>
@@ -160,6 +144,16 @@ const EmailList: React.FC<EmailListProps> = ({
         )}
       </div>
 
+      {inboxSubView === 'inbox' && (
+        <button
+          onClick={handleComposeNew}
+          className="absolute bottom-6 right-6 flex items-center justify-center w-14 h-14 bg-primary-600 text-white rounded-full shadow-lg hover:bg-primary-700 transition-transform duration-200 hover:scale-105 z-20"
+          title="新規メール作成"
+        >
+          <PencilIcon className="w-7 h-7" />
+        </button>
+      )}
+
       {inboxSubView === 'inbox' && aiSearchResultIds !== null && (
          <div className="px-4 py-2 bg-primary-50 dark:bg-primary-900/50 border-y border-primary-200 dark:border-primary-800 flex justify-between items-center text-sm flex-shrink-0">
             <p className="font-medium text-primary-700 dark:text-primary-200">
@@ -173,17 +167,23 @@ const EmailList: React.FC<EmailListProps> = ({
       )}
 
       <ul className="overflow-y-auto flex-grow">
-        {filteredItemsBySearch.map(item => (
-          <EmailListItem
-            key={item.id}
-            item={item}
-            isSelected={selectedItemId === item.id}
-            onSelect={onItemSelect}
-            selectedForBulk={inboxSubView === 'inbox' && bulkSelectedIds.includes(item.id)}
-            onBulkSelect={handleBulkSelect}
-          />
-        ))}
-         {filteredItemsBySearch.length === 0 && (
+        {items.map((item, index, array) => {
+            const prevItem = array[index - 1];
+            const isThreadChild = item.threadId && prevItem?.threadId === item.threadId;
+
+            return (
+              <EmailListItem
+                key={item.id}
+                item={item}
+                isSelected={selectedItemId === item.id}
+                onSelect={onItemSelect}
+                selectedForBulk={inboxSubView === 'inbox' && bulkSelectedIds.includes(item.id)}
+                onBulkSelect={handleBulkSelect}
+                isThreadChild={isThreadChild}
+              />
+            );
+        })}
+         {items.length === 0 && (
             <div className="text-center p-8 text-slate-500">
                 <p>メールが見つかりませんでした。</p>
             </div>

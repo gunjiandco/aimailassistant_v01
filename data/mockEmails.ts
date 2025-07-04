@@ -1,9 +1,11 @@
+
 import { Email, EmailStatus } from '../types';
 
 export const mockEmails: Email[] = [
   {
     id: '1',
     displayId: 'EM-0001',
+    threadId: 'thread-1',
     sender: { name: '田中 健司', email: 'kenji.tanaka@example.com' },
     cc: [{ name: 'スポンサーチーム', email: 'sponsors@example.com' }],
     subject: 'Re: NEXT TOKYO 2024 プレゼンテーション提出に関するご質問',
@@ -13,8 +15,20 @@ export const mockEmails: Email[] = [
     aiTags: ['プレゼン', '提出', '質問'],
   },
   {
+    id: '8',
+    displayId: 'EM-0008',
+    threadId: 'thread-1',
+    sender: { name: 'イベント事務局', email: 'support@nexttokyo.events' },
+    subject: 'Re: NEXT TOKYO 2024 プレゼンテーション提出に関するご質問',
+    body: `<p>田中様</p><p>ご連絡ありがとうございます。<br>プレゼンテーション資料の提出期限は8月15日、フォーマットはPowerPoint（.pptx）でお願いいたします。</p><p>ご不明な点がございましたら、再度お問い合わせください。</p><p>よろしくお願いいたします。<br>NEXT TOKYO 事務局 鈴木</p>`,
+    timestamp: '2024-07-21T11:00:00Z',
+    status: EmailStatus.Replied,
+    aiTags: ['プレゼン', '提出期限', '回答'],
+  },
+  {
     id: '2',
     displayId: 'EM-0002',
+    threadId: 'thread-2',
     sender: { name: '佐藤 佑紀', email: 'yuki.sato@example-corp.jp' },
     subject: 'ホテル予約確認 - NEXT TOKYO 2024',
     body: `<p>イベント事務局ご担当者様</p><p>お世話になっております。<br>まだホテルの予約確認書を受け取っておりません。8月15日に到着予定です。ご確認いただけますでしょうか。</p><p>予約は「佐藤 佑紀」の名前で行っているはずです。</p><p>よろしくお願いいたします。<br>佐藤</p>`,
@@ -25,6 +39,7 @@ export const mockEmails: Email[] = [
   {
     id: '3',
     displayId: 'EM-0003',
+    threadId: 'thread-3',
     sender: { name: 'マリア・ロドリゲス', email: 'maria.r@web-innovations.com' },
     subject: '旅費精算書',
     body: `<p>お世話になっております。</p><p>旅費精算書を添付いたしましたので、ご確認ください。その他、必要な情報がございましたらお知らせください。</p><p>航空券の領収書も含まれております。</p><p>よろしくお願いいたします。<br>マリア・ロドリゲス</p>`,
@@ -39,6 +54,7 @@ export const mockEmails: Email[] = [
   {
     id: '4',
     displayId: 'EM-0004',
+    threadId: 'thread-4',
     sender: { name: 'Next Tokyo Logistics', email: 'logistics@nexttokyo.events' },
     subject: 'FW: 最終フロアプラン添付',
     body: `<p>チーム各位</p><p>添付にて、メイン展示ホールの最終フロアプランをご確認ください。すべてのブース番号が確定しました。</p><p>明日中に全出展者へ配布をお願いします。</p><p>以上、よろしくお願いいたします。</p>`,
@@ -51,6 +67,7 @@ export const mockEmails: Email[] = [
   {
     id: '5',
     displayId: 'EM-0005',
+    threadId: 'thread-5',
     sender: { name: 'ジョン・ドウ', email: 'john.d@tech-solutions.io' },
     cc: [{ name: '人事部', email: 'hr@tech-solutions.io' }],
     subject: 'Re: NEXT TOKYO 2024へのご出席について',
@@ -62,6 +79,7 @@ export const mockEmails: Email[] = [
    {
     id: '6',
     displayId: 'EM-0006',
+    threadId: 'thread-6',
     sender: { name: 'エミリー・カーター', email: 'emily.carter@creative-designs.net' },
     subject: '入場パスに関する質問',
     body: `<p>お世話になっております。</p><p>私の代わりに、弊社CEOのジェームズ・ハリソンが出席することになりました。入場パスの名義を彼に変更することは可能でしょうか。手続きについてご教示いただけますと幸いです。</p><p>よろしくお願いいたします。<br>エミリー</p>`,
@@ -71,6 +89,7 @@ export const mockEmails: Email[] = [
   {
     id: '7',
     displayId: 'EM-0007',
+    threadId: 'thread-7',
     sender: { name: 'イベント事務局', email: 'noreply@nexttokyo.events' },
     subject: '参加者向けポータルサイトのご案内',
     body: `<p>参加者の皆様</p><p>イベントにご登録いただきありがとうございます。</p><p>当日のアジェンダや会場マップは、以下の参加者向けポータルサイトでご確認いただけます。</p><p><a href="https://example.com/portal" target="_blank" rel="noopener noreferrer" style="color: #3b82f6;">https://example.com/portal</a></p><p>ログインには登録時のメールアドレスをご利用ください。</p><p>よろしくお願いいたします。<br>NEXT TOKYO 2024 事務局</p>`,

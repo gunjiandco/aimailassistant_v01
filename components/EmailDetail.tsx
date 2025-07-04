@@ -1,23 +1,43 @@
 
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Email, SentEmail } from '../types';
 import InboxIcon from './icons/InboxIcon';
 import Tag from './Tag';
 import PaperclipIcon from './icons/PaperclipIcon';
 import ClipboardDocumentIcon from './icons/ClipboardDocumentIcon';
 import { useAppDispatch } from '../contexts/AppContext';
+import ChevronLeftIcon from './icons/ChevronLeftIcon';
+import QuotedMessage from './QuotedMessage';
+import ArrowUturnLeftIcon from './icons/ArrowUturnLeftIcon';
 
 interface EmailDetailProps {
   item: Email | SentEmail | null;
+  onBack?: () => void;
+  onReply: () => void;
+  allEmails: Email[];
+  allSentEmails: SentEmail[];
 }
 
-const EmailDetail: React.FC<EmailDetailProps> = ({ item }) => {
+const EmailDetail: React.FC<EmailDetailProps> = ({ item, onBack, onReply, allEmails, allSentEmails }) => {
   const dispatch = useAppDispatch();
+
+  const threadHistory = useMemo(() => {
+    if (!item || !item.threadId) return [];
+
+    const allMessagesInThread = [...allEmails, ...allSentEmails]
+        .filter(m => m.threadId === item.threadId)
+        .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+    const currentItemIndex = allMessagesInThread.findIndex(m => m.id === item.id);
+    
+    return currentItemIndex > 0 ? allMessagesInThread.slice(0, currentItemIndex) : [];
+  }, [item, allEmails, allSentEmails]);
+
 
   if (!item) {
     return (
-      <div className="flex-1 p-6 flex flex-col items-center justify-center text-center bg-slate-50 dark:bg-slate-900/50">
+      <div className="flex-1 p-6 flex-col items-center justify-center text-center bg-slate-50 dark:bg-slate-900/50 hidden md:flex">
         <InboxIcon className="w-20 h-20 text-slate-300 dark:text-slate-600" />
         <h3 className="mt-4 text-xl font-medium text-slate-800 dark:text-slate-200">メールを選択して表示</h3>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">まだ何も表示されていません。左のリストから項目を選択してください。</p>
@@ -56,8 +76,26 @@ const EmailDetail: React.FC<EmailDetailProps> = ({ item }) => {
   return (
     <div className="flex-1 bg-slate-50 dark:bg-slate-900/50 h-full overflow-y-auto p-6">
       <div className="pb-4 border-b border-slate-200 dark:border-slate-700">
+        <div className="flex flex-wrap justify-between items-center gap-2 mb-2">
+            <div className="flex items-center gap-2">
+                {onBack && (
+                    <button onClick={onBack} className="md:hidden p-2 -ml-2 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full">
+                        <ChevronLeftIcon className="w-6 h-6"/>
+                    </button>
+                )}
+                <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{item.subject}</h1>
+            </div>
+             {isInboxItem && (
+                <button 
+                    onClick={onReply} 
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-primary-600 rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                >
+                    <ArrowUturnLeftIcon className="w-4 h-4" />
+                    返信
+                </button>
+            )}
+        </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{item.subject}</h1>
             {isInboxItem && (
                 <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 rounded-full px-3 py-1">
                     <span className="font-mono text-sm font-semibold text-slate-700 dark:text-slate-200">{(item as Email).displayId}</span>
@@ -112,6 +150,14 @@ const EmailDetail: React.FC<EmailDetailProps> = ({ item }) => {
         className="mt-8 prose prose-slate dark:prose-invert max-w-none text-slate-700 dark:text-slate-300"
         dangerouslySetInnerHTML={{ __html: item.body.replace(/\n/g, '<br />') }}
       />
+      
+      {threadHistory.length > 0 && (
+        <div className="mt-8">
+            {threadHistory.map(historyItem => (
+              <QuotedMessage key={historyItem.id} item={historyItem} />
+            ))}
+        </div>
+      )}
 
       {item.attachments && item.attachments.length > 0 && (
         <div className="mt-6 pt-4 border-t border-slate-200 dark:border-slate-700">

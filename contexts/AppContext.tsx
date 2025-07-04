@@ -2,12 +2,14 @@
 
 import React, { createContext, useReducer, useContext, Dispatch } from 'react';
 import { 
-    Email, SentEmail, Contact, MailingList, Task, Template, Collaborator, EmailStatus, TaskStatus, AiAnalysisResult, Notification, AppSettings
+    Email, SentEmail, Contact, MailingList, Task, Template, Collaborator, EmailStatus, TaskStatus, AiAnalysisResult, Notification, AppSettings, Sender, Draft
 } from '../types';
 import { mockEmails } from '../data/mockEmails';
 import { mockContacts, mockMailingLists } from '../data/mockContacts';
 import { mockTemplates } from '../data/mockTemplates';
 import { mockCollaborators } from '../data/mockCollaborators';
+import { generateId } from '../utils/helpers';
+import { createTask, createTemplate, createSentEmail, createContact, createMailingList } from '../utils/models';
 
 // 1. State Interface
 interface AppState {
@@ -23,7 +25,6 @@ interface AppState {
     view: 'inbox' | 'dashboard' | 'contacts' | 'templates' | 'settings';
     inboxSubView: 'inbox' | 'sent';
     isBulkSendModalOpen: boolean;
-    bulkSendRecipients: Contact[];
     isImportModalOpen: boolean;
     currentUser: Collaborator;
     isUserMenuOpen: boolean;
@@ -49,7 +50,6 @@ const initialState: AppState = {
     view: 'inbox',
     inboxSubView: 'inbox',
     isBulkSendModalOpen: false,
-    bulkSendRecipients: [],
     isImportModalOpen: false,
     currentUser: mockCollaborators[0],
     isUserMenuOpen: false,
@@ -83,7 +83,11 @@ type Action =
   | { type: 'UPDATE_EMAIL_STATUS'; payload: { id: string; status: EmailStatus, user: Collaborator } }
   | { type: 'BULK_UPDATE_EMAIL_STATUS'; payload: { status: EmailStatus, user: Collaborator } }
   | { type: 'UPDATE_EMAIL_ANALYSIS'; payload: { id: string, analysis: AiAnalysisResult, user: Collaborator } }
+  | { type: 'UPDATE_EMAIL_TAGS'; payload: { id: string; tags: string[]; user: Collaborator } }
   | { type: 'SEND_EMAIL'; payload: { draft: Omit<SentEmail, 'id' | 'timestamp' | 'sentBy'>; user: Collaborator } }
+  | { type: 'SEND_PERSONALIZED_BULK_EMAIL'; payload: { emails: Array<{ recipients: Sender[], subject: string, body: string }>; user: Collaborator } }
+  | { type: 'SAVE_DRAFT'; payload: { emailId: string; draft: Draft } }
+  | { type: 'DELETE_DRAFT'; payload: { emailId: string } }
   | { type: 'SET_CURRENT_USER'; payload: Collaborator }
   | { type: 'TOGGLE_USER_MENU' }
   | { type: 'CLOSE_USER_MENU' }
@@ -91,7 +95,7 @@ type Action =
   | { type: 'SET_FILTER_TAG'; payload: string | 'all' }
   | { type: 'ADD_CONTACT'; payload: { listId: string; contact: Omit<Contact, 'id'> } }
   | { type: 'ADD_MAILING_LIST'; payload: string }
-  | { type: 'INITIATE_BULK_SEND'; payload: string[] }
+  | { type: 'OPEN_BULK_SEND_MODAL' }
   | { type: 'CLOSE_BULK_SEND' }
   | { type: 'OPEN_IMPORT_MODAL' }
   | { type: 'CLOSE_IMPORT_MODAL' }
@@ -109,6 +113,40 @@ type Action =
   | { type: 'AI_SEARCH_SUCCESS'; payload: string[] }
   | { type: 'AI_SEARCH_CLEAR' }
   | { type: 'UPDATE_APP_SETTINGS'; payload: Partial<AppSettings> };
+
+// --- Reducer Helper ---
+const processContactImport = (
+    currentContacts: Contact[], 
+    importedContacts: Omit<Contact, 'id'>[]
+): { finalContacts: Contact[], importedIds: Set<string> } => {
+    const emailToExistingContact = new Map(currentContacts.map(c => [c.email.toLowerCase(), c]));
+    const contactsToAdd: Contact[] = [];
+    const importedIds = new Set<string>();
+    const contactsToUpdateMap = new Map<string, Partial<Contact>>();
+
+    importedContacts.forEach((imported) => {
+        const existingContact = emailToExistingContact.get(imported.email.toLowerCase());
+        if (existingContact) {
+            contactsToUpdateMap.set(existingContact.id, {
+                name: imported.name,
+                affiliation: imported.affiliation,
+                requiredCc: imported.requiredCc
+            });
+            importedIds.add(existingContact.id);
+        } else {
+            const newContact = createContact(imported);
+            contactsToAdd.push(newContact);
+            importedIds.add(newContact.id);
+        }
+    });
+
+    const finalContacts = [
+        ...currentContacts.map(c => contactsToUpdateMap.has(c.id) ? { ...c, ...contactsToUpdateMap.get(c.id) } : c),
+        ...contactsToAdd
+    ];
+
+    return { finalContacts, importedIds };
+};
 
 
 // 4. Reducer Function
@@ -162,28 +200,72 @@ const appReducer = (state: AppState, action: Action): AppState => {
                 ),
             };
         }
+        case 'UPDATE_EMAIL_TAGS': {
+            const now = new Date().toISOString();
+            return {
+                ...state,
+                emails: state.emails.map(email =>
+                    email.id === action.payload.id
+                    ? { ...email, aiTags: action.payload.tags, updatedAt: now, lastModifiedBy: action.payload.user.name }
+                    : email
+                ),
+            };
+        }
         case 'SEND_EMAIL': {
             const now = new Date().toISOString();
-            const newSentEmail: SentEmail = {
-                id: `sent-${Date.now()}`,
-                timestamp: now,
-                ...action.payload.draft,
-                sentBy: action.payload.user.name,
-                updatedAt: now,
-                lastModifiedBy: action.payload.user.name,
-            };
+            const { draft, user } = action.payload;
+            
+            const originalEmail = state.emails.find(e => e.id === draft.inReplyTo);
+            const threadId = originalEmail?.threadId || generateId('thread');
+            
+            const newSentEmail = createSentEmail(draft, user, threadId);
+
             return {
                 ...state,
                 sentEmails: [newSentEmail, ...state.sentEmails],
                 emails: state.emails.map(email =>
-                    email.id === action.payload.draft.inReplyTo
-                    ? { ...email, status: EmailStatus.Replied, updatedAt: now, lastModifiedBy: action.payload.user.name }
+                    email.id === draft.inReplyTo
+                    ? { ...email, status: EmailStatus.Replied, draft: undefined, updatedAt: now, lastModifiedBy: user.name }
                     : email
                 ),
                 inboxSubView: 'sent',
                 selectedItemId: newSentEmail.id,
             };
         }
+        case 'SEND_PERSONALIZED_BULK_EMAIL': {
+            const { emails, user } = action.payload;
+            const newSentEmails: SentEmail[] = emails.map((draft) => {
+                const threadId = generateId('thread');
+                return createSentEmail({ ...draft, threadId }, user, threadId);
+            });
+
+            return {
+                ...state,
+                sentEmails: [...newSentEmails, ...state.sentEmails],
+                isBulkSendModalOpen: false,
+                view: 'inbox',
+                inboxSubView: 'sent',
+                selectedItemId: newSentEmails[0]?.id || null,
+            };
+        }
+        case 'SAVE_DRAFT':
+            return {
+                ...state,
+                emails: state.emails.map(email =>
+                    email.id === action.payload.emailId
+                    ? { ...email, draft: action.payload.draft, status: EmailStatus.Drafting }
+                    : email
+                ),
+            };
+        case 'DELETE_DRAFT':
+             return {
+                ...state,
+                emails: state.emails.map(email =>
+                    email.id === action.payload.emailId
+                    ? { ...email, draft: undefined, status: EmailStatus.NeedsReply }
+                    : email
+                ),
+            };
         case 'SET_CURRENT_USER':
             return { ...state, currentUser: action.payload, isUserMenuOpen: false };
         case 'TOGGLE_USER_MENU':
@@ -195,7 +277,7 @@ const appReducer = (state: AppState, action: Action): AppState => {
         case 'SET_FILTER_TAG':
             return { ...state, filterTag: action.payload };
         case 'ADD_TASK':
-            return { ...state, tasks: [{ id: `task-${Date.now()}`, ...action.payload }, ...state.tasks] };
+            return { ...state, tasks: [createTask(action.payload), ...state.tasks] };
         case 'UPDATE_TASK_STATUS':
             return {
                 ...state,
@@ -212,17 +294,7 @@ const appReducer = (state: AppState, action: Action): AppState => {
                 tasks: state.tasks.filter(t => t.id !== action.payload.taskId)
             };
         case 'ADD_TEMPLATE': {
-            const now = new Date().toISOString();
-            const newTemplate: Template = {
-                id: `tmpl-${Date.now()}`,
-                title: action.payload.title,
-                body: action.payload.body,
-                tags: action.payload.tags,
-                createdAt: now,
-                createdBy: action.payload.user.name,
-                updatedAt: now,
-                lastModifiedBy: action.payload.user.name,
-            };
+            const newTemplate = createTemplate(action.payload, action.payload.user);
             return { ...state, templates: [newTemplate, ...state.templates] };
         }
         case 'UPDATE_TEMPLATE': {
@@ -239,7 +311,7 @@ const appReducer = (state: AppState, action: Action): AppState => {
         case 'DELETE_TEMPLATE':
             return { ...state, templates: state.templates.filter(t => t.id !== action.payload) };
         case 'ADD_CONTACT': {
-            const newContact = { ...action.payload.contact, id: `c-${Date.now()}` };
+            const newContact = createContact(action.payload.contact);
             return {
                 ...state,
                 contacts: [...state.contacts, newContact],
@@ -251,31 +323,29 @@ const appReducer = (state: AppState, action: Action): AppState => {
             };
         }
         case 'ADD_MAILING_LIST':
-            return { ...state, mailingLists: [...state.mailingLists, { id: `ml-${Date.now()}`, name: action.payload, contactIds: [] }] };
-        case 'INITIATE_BULK_SEND':
-            return { ...state, isBulkSendModalOpen: true, bulkSendRecipients: state.contacts.filter(c => action.payload.includes(c.id)) };
+            return { ...state, mailingLists: [...state.mailingLists, createMailingList(action.payload)] };
+        case 'OPEN_BULK_SEND_MODAL':
+            return { ...state, isBulkSendModalOpen: true };
         case 'CLOSE_BULK_SEND':
-            return { ...state, isBulkSendModalOpen: false, bulkSendRecipients: [] };
+            return { ...state, isBulkSendModalOpen: false };
         case 'OPEN_IMPORT_MODAL':
             return { ...state, isImportModalOpen: true };
         case 'CLOSE_IMPORT_MODAL':
             return { ...state, isImportModalOpen: false };
         case 'IMPORT_CONTACTS': {
-             const newContactsWithIds: Contact[] = action.payload.newContacts.map((contact, index) => ({
-                ...contact,
-                id: `c-imported-${Date.now()}-${index}`,
-            }));
-            const newContactIds = newContactsWithIds.map(c => c.id);
+            const { listId, newContacts } = action.payload;
+            const { finalContacts, importedIds } = processContactImport(state.contacts, newContacts);
+            
             return {
                 ...state,
-                contacts: [...state.contacts, ...newContactsWithIds],
+                contacts: finalContacts,
                 mailingLists: state.mailingLists.map(list =>
-                    list.id === action.payload.listId
-                    ? { ...list, contactIds: [...new Set([...list.contactIds, ...newContactIds])] }
+                    list.id === listId
+                    ? { ...list, contactIds: [...new Set([...list.contactIds, ...Array.from(importedIds)])] }
                     : list
                 ),
                 isImportModalOpen: false
-            }
+            };
         }
         case 'ADD_NOTIFICATION':
             return {

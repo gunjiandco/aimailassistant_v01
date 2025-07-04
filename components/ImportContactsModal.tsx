@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect } from 'react';
 import { MailingList, Contact } from '../types';
 import XMarkIcon from './icons/XMarkIcon';
@@ -108,6 +109,9 @@ const ImportContactsModal: React.FC<ImportContactsModalProps> = ({ isOpen, onClo
                 <div className="p-6 space-y-6 overflow-y-auto">
                     <div className="p-4 bg-blue-50 dark:bg-blue-900/50 border border-blue-200 dark:border-blue-800 rounded-md">
                         <h4 className="font-semibold text-blue-800 dark:text-blue-200">CSVフォーマットガイド</h4>
+                        <p className="text-sm text-blue-700 dark:text-blue-300 mt-2">
+                            CSVファイルに既存のメールアドレスが含まれている場合、その連絡先の情報（氏名、所属、必須CC）が更新されます。
+                        </p>
                         <ul className="list-disc list-inside text-sm text-blue-700 dark:text-blue-300 mt-2 space-y-1">
                             <li>1行目はヘッダー行にしてください: <strong>name,email,affiliation,requiredcc</strong></li>
                             <li><strong>name</strong> と <strong>email</strong> は必須です。</li>
@@ -151,7 +155,7 @@ const ImportContactsModal: React.FC<ImportContactsModalProps> = ({ isOpen, onClo
                         className="flex items-center gap-2 px-6 py-2.5 text-sm font-semibold text-white bg-primary-600 rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:bg-slate-400 disabled:cursor-not-allowed"
                     >
                         <ArrowUpTrayIcon className="w-4 h-4" />
-                        {isImporting ? 'インポート中...' : 'インポートを実行'}
+                        {isImporting ? '処理中...' : 'インポート・更新を実行'}
                     </button>
                 </div>
             </div>

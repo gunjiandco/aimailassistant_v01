@@ -1,20 +1,13 @@
 
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Template } from '../types';
 import { generateTemplateDraft, generateTagsForTemplate } from '../services/geminiService';
 import XMarkIcon from './icons/XMarkIcon';
 import SparklesIcon from './icons/SparklesIcon';
 import { useAppDispatch, useAppState } from '../contexts/AppContext';
-
-import BoldIcon from './icons/BoldIcon';
-import ItalicIcon from './icons/ItalicIcon';
-import UnderlineIcon from './icons/UnderlineIcon';
-import ListBulletIcon from './icons/ListBulletIcon';
-import ListOrderedIcon from './icons/ListOrderedIcon';
-import LinkIcon from './icons/LinkIcon';
-import FontColorIcon from './icons/FontColorIcon';
-
+import EditorToolbar from './EditorToolbar';
+import { escapeRegExp } from '../utils/helpers';
 
 interface TemplateEditorModalProps {
   isOpen: boolean;
@@ -41,8 +34,19 @@ const TemplateEditorModal: React.FC<TemplateEditorModalProps> = ({ isOpen, onClo
   const [aiPrompt, setAiPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [isGeneratingTags, setIsGeneratingTags] = useState(false);
-  const [isColorPickerOpen, setIsColorPickerOpen] = useState(false);
-  const colorPickerRef = useRef<HTMLDivElement>(null);
+  
+  const availablePlaceholders = useMemo(() => {
+    const placeholders = ['{{name}}', '{{email}}'];
+    placeholders.push('{{eventName}}', '{{websiteUrl}}', '{{officeName}}');
+    if (appSettings.knowledgeBase) {
+        appSettings.knowledgeBase.forEach(item => {
+            if(item.key.trim()) {
+                placeholders.push(`{{${item.key.trim()}}}`);
+            }
+        });
+    }
+    return [...new Set(placeholders)];
+  }, [appSettings]);
 
 
   useEffect(() => {
@@ -57,24 +61,8 @@ const TemplateEditorModal: React.FC<TemplateEditorModalProps> = ({ isOpen, onClo
       setAiPrompt('');
       setIsGenerating(false);
       setIsGeneratingTags(false);
-      setIsColorPickerOpen(false);
     }
   }, [isOpen, template]);
-
-  useEffect(() => {
-    if (!isColorPickerOpen) return;
-
-    function handleClickOutside(event: MouseEvent) {
-        if (colorPickerRef.current && !colorPickerRef.current.contains(event.target as Node)) {
-            setIsColorPickerOpen(false);
-        }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-        document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [isColorPickerOpen]);
-
 
   const execCmd = (command: string, value?: string) => {
     document.execCommand(command, false, value);
@@ -91,8 +79,8 @@ const TemplateEditorModal: React.FC<TemplateEditorModalProps> = ({ isOpen, onClo
     }
   };
 
-  const insertPlaceholder = () => {
-    execCmd('insertHTML', '<strong>{{name}}</strong>&nbsp;');
+  const insertPlaceholder = (text: string) => {
+    execCmd('insertHTML', `<strong>${text}</strong>&nbsp;`);
   };
 
   const handleBodyChange = (e: React.FormEvent<HTMLDivElement>) => {
@@ -212,53 +200,33 @@ const TemplateEditorModal: React.FC<TemplateEditorModalProps> = ({ isOpen, onClo
                         </div>
                         <div>
                             <label htmlFor="template-body" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">本文</label>
-                             <div className="flex items-center gap-1 p-2 border border-b-0 border-slate-300 dark:border-slate-600 rounded-t-md bg-slate-50 dark:bg-slate-700/50">
-                                <button type="button" title="太字" onClick={() => execCmd('bold')} className="p-2 rounded hover:bg-slate-200 dark:hover:bg-slate-600"><BoldIcon className="w-5 h-5"/></button>
-                                <button type="button" title="斜体" onClick={() => execCmd('italic')} className="p-2 rounded hover:bg-slate-200 dark:hover:bg-slate-600"><ItalicIcon className="w-5 h-5"/></button>
-                                <button type="button" title="下線" onClick={() => execCmd('underline')} className="p-2 rounded hover:bg-slate-200 dark:hover:bg-slate-600"><UnderlineIcon className="w-5 h-5"/></button>
-                                <div className="w-px h-5 bg-slate-300 dark:bg-slate-500 mx-1"></div>
-                                <button type="button" title="箇条書き" onClick={() => execCmd('insertUnorderedList')} className="p-2 rounded hover:bg-slate-200 dark:hover:bg-slate-600"><ListBulletIcon className="w-5 h-5"/></button>
-                                <button type="button" title="番号付きリスト" onClick={() => execCmd('insertOrderedList')} className="p-2 rounded hover:bg-slate-200 dark:hover:bg-slate-600"><ListOrderedIcon className="w-5 h-5"/></button>
-                                <div className="w-px h-5 bg-slate-300 dark:bg-slate-500 mx-1"></div>
-                                <button type="button" title="リンク" onClick={handleLink} className="p-2 rounded hover:bg-slate-200 dark:hover:bg-slate-600"><LinkIcon className="w-5 h-5"/></button>
-                                <div className="relative" ref={colorPickerRef}>
-                                    <button type="button" title="文字色" onClick={() => setIsColorPickerOpen(prev => !prev)} className="p-2 rounded hover:bg-slate-200 dark:hover:bg-slate-600">
-                                        <FontColorIcon className="w-5 h-5 text-slate-700 dark:text-slate-300" />
-                                    </button>
-                                    {isColorPickerOpen && (
-                                        <div className="absolute top-full left-0 mt-2 p-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-md shadow-lg z-20">
-                                            <div className="grid grid-cols-4 gap-1">
-                                                {['#0F172A', '#64748B', '#DC2626', '#2563EB', '#16A34A', '#F97316', '#9333EA', '#FFFFFF'].map(color => (
-                                                    <button
-                                                        key={color}
-                                                        type="button"
-                                                        aria-label={`Color ${color}`}
-                                                        className="w-6 h-6 rounded-sm border border-slate-400 dark:border-slate-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                                                        style={{ backgroundColor: color }}
-                                                        onClick={() => {
-                                                            execCmd('foreColor', color);
-                                                            setIsColorPickerOpen(false);
-                                                        }}
-                                                    />
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                                <div className="w-px h-5 bg-slate-300 dark:bg-slate-500 mx-1"></div>
-                                <button type="button" onClick={insertPlaceholder} className="px-2 py-1 text-xs font-semibold bg-primary-100 text-primary-700 rounded hover:bg-primary-200 dark:bg-primary-900/50 dark:text-primary-200 dark:hover:bg-primary-900">
-                                    &#123;&#123;name&#125;&#125;
-                                </button>
-                            </div>
+                             <div className="border border-b-0 border-slate-300 dark:border-slate-600 rounded-t-md">
+                               <EditorToolbar execCmd={execCmd} handleLink={handleLink} />
+                             </div>
                             <div
                                 id="template-body"
                                 ref={editorRef}
                                 contentEditable={true}
                                 onInput={handleBodyChange}
+                                dangerouslySetInnerHTML={{ __html: body }}
                                 className="w-full min-h-[250px] px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-b-md focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm prose prose-slate dark:prose-invert max-w-none"
                                 spellCheck="false"
                             />
-                            <p className="text-xs text-slate-500 mt-1">&#123;&#123;name&#125;&#125; を名前のプレースホルダーとして使用できます。</p>
+                            <div className="mt-2">
+                                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-2">利用可能なプレースホルダー (クリックして挿入)</label>
+                                <div className="flex flex-wrap gap-2 p-2 bg-slate-50 dark:bg-slate-900/50 rounded-md border border-slate-200 dark:border-slate-700">
+                                    {availablePlaceholders.map(p => (
+                                        <button
+                                            type="button"
+                                            key={p}
+                                            onClick={() => insertPlaceholder(p)}
+                                            className="px-2 py-1 text-xs font-mono bg-blue-100 text-blue-800 rounded hover:bg-blue-200 dark:bg-blue-900/50 dark:text-blue-200 dark:hover:bg-blue-900"
+                                        >
+                                            {p}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
                         </div>
                          <div>
                             <label htmlFor="template-tags" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">タグ</label>

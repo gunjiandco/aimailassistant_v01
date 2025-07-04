@@ -1,8 +1,10 @@
 
 
 import React from 'react';
-import { Email, EmailStatus, SentEmail } from '../types';
+import { Email, SentEmail } from '../types';
 import Tag from './Tag';
+import PaperclipIcon from './icons/PaperclipIcon';
+import { formatDisplayDate } from '../utils/helpers';
 
 interface EmailListItemProps {
   item: Email | SentEmail;
@@ -10,18 +12,17 @@ interface EmailListItemProps {
   onSelect: (id: string) => void;
   selectedForBulk: boolean;
   onBulkSelect: (id: string) => void;
+  isThreadChild?: boolean;
 }
 
-
-const EmailListItem: React.FC<EmailListItemProps> = ({ item, isSelected, onSelect, selectedForBulk, onBulkSelect }) => {
-  const date = new Date(item.timestamp);
-  const formattedDate = date.toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' });
-
+const EmailListItem: React.FC<EmailListItemProps> = ({ item, isSelected, onSelect, selectedForBulk, onBulkSelect, isThreadChild }) => {
+  const displayDate = formatDisplayDate(item.timestamp);
   const isInboxItem = 'sender' in item;
   const sentItem = !isInboxItem ? (item as SentEmail) : null;
   
   // HTMLタグをプレーンテキストに変換してプレビューをクリーンにします
   const plainTextBody = item.body.replace(/<[^>]*>?/gm, ' ').replace(/\s+/g, ' ').trim();
+  const hasAttachments = item.attachments && item.attachments.length > 0;
 
   return (
     <li
@@ -29,7 +30,7 @@ const EmailListItem: React.FC<EmailListItemProps> = ({ item, isSelected, onSelec
         isSelected
           ? 'bg-primary-100 dark:bg-primary-900/50'
           : 'hover:bg-slate-100 dark:hover:bg-slate-800'
-      }`}
+      } ${isThreadChild ? 'pl-10' : ''}`}
     >
         <div className="flex items-start gap-3">
             {isInboxItem && (
@@ -47,13 +48,18 @@ const EmailListItem: React.FC<EmailListItemProps> = ({ item, isSelected, onSelec
 
             <div className="flex-1" onClick={() => onSelect(item.id)}>
                 <div className="flex justify-between items-start">
-                    <p className="font-bold text-sm text-slate-800 dark:text-slate-100 truncate">
-                      {isInboxItem ? (item as Email).sender.name : `宛先: ${item.recipients.map(r => r.name).join(', ')}`}
+                    <div className="font-bold text-sm text-slate-800 dark:text-slate-100 truncate">
+                      <span>{isInboxItem ? (item as Email).sender.name : `宛先: ${item.recipients.map(r => r.name).join(', ')}`}</span>
+                      {isInboxItem && (item as Email).draft && <span className="ml-2 font-semibold text-xs text-red-600 dark:text-red-400">[下書き]</span>}
                       {isInboxItem && <span className="ml-2 font-mono font-normal text-xs text-slate-500 dark:text-slate-400">{(item as Email).displayId}</span>}
-                    </p>
-                    <time className="text-xs text-slate-500 dark:text-slate-400 flex-shrink-0 ml-2">{formattedDate}</time>
+                    </div>
+                    <time className="text-xs text-slate-500 dark:text-slate-400 flex-shrink-0 ml-2">{displayDate}</time>
                 </div>
-                <p className="text-sm text-slate-700 dark:text-slate-300 font-medium truncate mt-1">{item.subject}</p>
+                <div className="flex items-center gap-2 mt-1">
+                  {hasAttachments && <PaperclipIcon className="w-4 h-4 text-slate-400 flex-shrink-0" />}
+                  <p className="text-sm text-slate-700 dark:text-slate-300 font-medium truncate">{item.subject}</p>
+                </div>
+
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 line-clamp-2">{plainTextBody}</p>
                 
                 {isInboxItem ? (

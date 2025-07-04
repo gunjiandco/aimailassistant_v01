@@ -1,10 +1,12 @@
 
-
 export enum EmailStatus {
   NeedsReply = '要返信',
   Replied = '返信済み',
   InfoReceived = '情報受領',
-  Archived = '対応済み'
+  Archived = '対応済み',
+  Reviewing = 'レビュー中',
+  Drafting = '作成中',
+  Approved = '承認済み',
 }
 
 export interface Sender {
@@ -17,6 +19,15 @@ export interface Attachment {
   url: string; // In a real app, this might be a temporary signed URL
 }
 
+export interface Draft {
+  recipients: Sender[];
+  cc?: Sender[];
+  bcc?: Sender[];
+  subject: string;
+  body: string;
+  attachments?: Attachment[];
+}
+
 export interface Email {
   id: string;
   displayId: string;
@@ -26,11 +37,13 @@ export interface Email {
   body: string;
   timestamp: string;
   status: EmailStatus;
+  threadId: string;
   aiTags?: string[]; // AIによって生成されたタグ
   suggestedTasks?: SuggestedTask[]; // AIによって提案されたタスク
   attachments?: Attachment[];
   updatedAt?: string; // ISO string for last update
   lastModifiedBy?: string; // Collaborator name
+  draft?: Draft; // 下書き
 }
 
 export interface SentEmail {
@@ -42,6 +55,7 @@ export interface SentEmail {
   body: string;
   timestamp: string;
   inReplyTo?: string; // ID of the email being replied to
+  threadId: string;
   attachments?: Attachment[];
   sentBy: string; // Name of the collaborator who sent it
   updatedAt?: string; // ISO string for last update
