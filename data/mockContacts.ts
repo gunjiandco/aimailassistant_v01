@@ -1,3 +1,4 @@
+
 import { Contact, MailingList } from '../types';
 
 export const mockContacts: Contact[] = [

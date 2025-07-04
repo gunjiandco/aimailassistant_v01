@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { Contact, MailingList } from '../types';
 import UsersIcon from './icons/UsersIcon';

@@ -1,5 +1,4 @@
 
-
 import React, { createContext, useReducer, useContext, Dispatch } from 'react';
 import { 
     Email, SentEmail, Contact, MailingList, Task, Template, Collaborator, EmailStatus, TaskStatus, AiAnalysisResult, Notification, AppSettings, Sender, Draft
@@ -153,21 +152,21 @@ const processContactImport = (
 const appReducer = (state: AppState, action: Action): AppState => {
     switch (action.type) {
         case 'SET_VIEW':
-            return { ...state, view: action.payload };
+            return { ...state, view: action.payload, selectedItemId: state.view === action.payload ? state.selectedItemId : null };
         case 'SET_INBOX_SUB_VIEW':
-            return { ...state, inboxSubView: action.payload };
+            return { ...state, inboxSubView: action.payload, selectedItemId: null };
         case 'SET_SELECTED_ITEM':
             return { ...state, selectedItemId: action.payload };
         case 'SET_BULK_SELECTED_IDS':
-             return { ...state, bulkSelectedIds: action.payload };
+            return { ...state, bulkSelectedIds: action.payload };
         case 'UPDATE_EMAIL_STATUS': {
             const now = new Date().toISOString();
             return {
                 ...state,
-                emails: state.emails.map(email =>
-                    email.id === action.payload.id 
-                    ? { ...email, status: action.payload.status, updatedAt: now, lastModifiedBy: action.payload.user.name } 
-                    : email
+                emails: state.emails.map(e =>
+                    e.id === action.payload.id
+                        ? { ...e, status: action.payload.status, updatedAt: now, lastModifiedBy: action.payload.user.name }
+                        : e
                 ),
             };
         }
@@ -175,97 +174,90 @@ const appReducer = (state: AppState, action: Action): AppState => {
             const now = new Date().toISOString();
             return {
                 ...state,
-                emails: state.emails.map(email =>
-                    state.bulkSelectedIds.includes(email.id)
-                    ? { ...email, status: action.payload.status, updatedAt: now, lastModifiedBy: action.payload.user.name }
-                    : email
+                emails: state.emails.map(e =>
+                    state.bulkSelectedIds.includes(e.id)
+                        ? { ...e, status: action.payload.status, updatedAt: now, lastModifiedBy: action.payload.user.name }
+                        : e
                 ),
                 bulkSelectedIds: [],
             };
         }
         case 'UPDATE_EMAIL_ANALYSIS': {
+            const { id, analysis, user } = action.payload;
             const now = new Date().toISOString();
             return {
                 ...state,
-                emails: state.emails.map(email =>
-                    email.id === action.payload.id 
-                    ? { ...email, 
-                        status: action.payload.analysis.status, 
-                        aiTags: action.payload.analysis.tags, 
-                        suggestedTasks: action.payload.analysis.suggestedTasks,
-                        updatedAt: now, 
-                        lastModifiedBy: action.payload.user.name 
-                      } 
-                    : email
-                ),
+                emails: state.emails.map(e =>
+                    e.id === id
+                        ? { 
+                            ...e, 
+                            status: analysis.status,
+                            aiTags: analysis.tags,
+                            suggestedTasks: analysis.suggestedTasks,
+                            updatedAt: now,
+                            lastModifiedBy: user.name,
+                          }
+                        : e
+                )
             };
         }
         case 'UPDATE_EMAIL_TAGS': {
-            const now = new Date().toISOString();
-            return {
-                ...state,
-                emails: state.emails.map(email =>
-                    email.id === action.payload.id
-                    ? { ...email, aiTags: action.payload.tags, updatedAt: now, lastModifiedBy: action.payload.user.name }
-                    : email
-                ),
-            };
-        }
+             const now = new Date().toISOString();
+             return {
+                 ...state,
+                 emails: state.emails.map(e =>
+                     e.id === action.payload.id
+                         ? { ...e, aiTags: action.payload.tags, updatedAt: now, lastModifiedBy: action.payload.user.name }
+                         : e
+                 ),
+             };
+         }
         case 'SEND_EMAIL': {
-            const now = new Date().toISOString();
             const { draft, user } = action.payload;
-            
-            const originalEmail = state.emails.find(e => e.id === draft.inReplyTo);
-            const threadId = originalEmail?.threadId || generateId('thread');
-            
-            const newSentEmail = createSentEmail(draft, user, threadId);
+            const newSentEmail = createSentEmail(draft, user, draft.threadId || generateId('thread'));
 
+            let emails = state.emails;
+            // If replying, update the original email's status
+            if (draft.inReplyTo) {
+                const now = new Date().toISOString();
+                emails = state.emails.map(e =>
+                    e.id === draft.inReplyTo
+                        ? { ...e, status: EmailStatus.Replied, draft: undefined, updatedAt: now, lastModifiedBy: user.name }
+                        : e
+                );
+            }
             return {
                 ...state,
+                emails: emails,
                 sentEmails: [newSentEmail, ...state.sentEmails],
-                emails: state.emails.map(email =>
-                    email.id === draft.inReplyTo
-                    ? { ...email, status: EmailStatus.Replied, draft: undefined, updatedAt: now, lastModifiedBy: user.name }
-                    : email
-                ),
-                inboxSubView: 'sent',
                 selectedItemId: newSentEmail.id,
+                inboxSubView: 'sent',
             };
         }
         case 'SEND_PERSONALIZED_BULK_EMAIL': {
             const { emails, user } = action.payload;
-            const newSentEmails: SentEmail[] = emails.map((draft) => {
-                const threadId = generateId('thread');
-                return createSentEmail({ ...draft, threadId }, user, threadId);
-            });
+            const newSentEmails = emails.map(emailDraft => createSentEmail(
+                {...emailDraft, threadId: generateId('thread')}, user, generateId('thread')
+            ));
 
             return {
                 ...state,
                 sentEmails: [...newSentEmails, ...state.sentEmails],
-                isBulkSendModalOpen: false,
-                view: 'inbox',
-                inboxSubView: 'sent',
-                selectedItemId: newSentEmails[0]?.id || null,
+                isBulkSendModalOpen: false
             };
         }
-        case 'SAVE_DRAFT':
+        case 'SAVE_DRAFT': {
             return {
                 ...state,
-                emails: state.emails.map(email =>
-                    email.id === action.payload.emailId
-                    ? { ...email, draft: action.payload.draft, status: EmailStatus.Drafting }
-                    : email
-                ),
+                emails: state.emails.map(e => e.id === action.payload.emailId ? { ...e, draft: action.payload.draft } : e),
             };
-        case 'DELETE_DRAFT':
-             return {
+        }
+        case 'DELETE_DRAFT': {
+            return {
                 ...state,
-                emails: state.emails.map(email =>
-                    email.id === action.payload.emailId
-                    ? { ...email, draft: undefined, status: EmailStatus.NeedsReply }
-                    : email
-                ),
+                emails: state.emails.map(e => e.id === action.payload.emailId ? { ...e, draft: undefined, status: EmailStatus.NeedsReply } : e),
             };
+        }
         case 'SET_CURRENT_USER':
             return { ...state, currentUser: action.payload, isUserMenuOpen: false };
         case 'TOGGLE_USER_MENU':
@@ -276,54 +268,25 @@ const appReducer = (state: AppState, action: Action): AppState => {
             return { ...state, filterStatus: action.payload };
         case 'SET_FILTER_TAG':
             return { ...state, filterTag: action.payload };
-        case 'ADD_TASK':
-            return { ...state, tasks: [createTask(action.payload), ...state.tasks] };
-        case 'UPDATE_TASK_STATUS':
-            return {
-                ...state,
-                tasks: state.tasks.map(t => t.id === action.payload.taskId ? { ...t, status: action.payload.status } : t)
-            };
-        case 'UPDATE_TASK':
-            return {
-                ...state,
-                tasks: state.tasks.map(t => t.id === action.payload.taskId ? { ...t, ...action.payload.updates } : t)
-            };
-        case 'DELETE_TASK':
-            return {
-                ...state,
-                tasks: state.tasks.filter(t => t.id !== action.payload.taskId)
-            };
-        case 'ADD_TEMPLATE': {
-            const newTemplate = createTemplate(action.payload, action.payload.user);
-            return { ...state, templates: [newTemplate, ...state.templates] };
-        }
-        case 'UPDATE_TEMPLATE': {
-            const now = new Date().toISOString();
-            return {
-                ...state,
-                templates: state.templates.map(t =>
-                    t.id === action.payload.template.id
-                    ? { ...action.payload.template, updatedAt: now, lastModifiedBy: action.payload.user.name }
-                    : t
-                ),
-            };
-        }
-        case 'DELETE_TEMPLATE':
-            return { ...state, templates: state.templates.filter(t => t.id !== action.payload) };
         case 'ADD_CONTACT': {
             const newContact = createContact(action.payload.contact);
             return {
                 ...state,
                 contacts: [...state.contacts, newContact],
-                mailingLists: state.mailingLists.map(list => 
+                mailingLists: state.mailingLists.map(list =>
                     list.id === action.payload.listId
-                    ? { ...list, contactIds: [...list.contactIds, newContact.id] }
-                    : list
+                        ? { ...list, contactIds: [...list.contactIds, newContact.id] }
+                        : list
                 ),
             };
         }
-        case 'ADD_MAILING_LIST':
-            return { ...state, mailingLists: [...state.mailingLists, createMailingList(action.payload)] };
+        case 'ADD_MAILING_LIST': {
+            const newList = createMailingList(action.payload);
+            return {
+                ...state,
+                mailingLists: [...state.mailingLists, newList],
+            };
+        }
         case 'OPEN_BULK_SEND_MODAL':
             return { ...state, isBulkSendModalOpen: true };
         case 'CLOSE_BULK_SEND':
@@ -335,22 +298,73 @@ const appReducer = (state: AppState, action: Action): AppState => {
         case 'IMPORT_CONTACTS': {
             const { listId, newContacts } = action.payload;
             const { finalContacts, importedIds } = processContactImport(state.contacts, newContacts);
-            
+            const updatedMailingLists = state.mailingLists.map(list => {
+                if (list.id === listId) {
+                    const combinedIds = new Set([...list.contactIds, ...importedIds]);
+                    return { ...list, contactIds: Array.from(combinedIds) };
+                }
+                return list;
+            });
             return {
                 ...state,
                 contacts: finalContacts,
-                mailingLists: state.mailingLists.map(list =>
-                    list.id === listId
-                    ? { ...list, contactIds: [...new Set([...list.contactIds, ...Array.from(importedIds)])] }
-                    : list
-                ),
+                mailingLists: updatedMailingLists,
                 isImportModalOpen: false
             };
         }
+        case 'ADD_TASK': {
+            const newTask = createTask(action.payload);
+            return {
+                ...state,
+                tasks: [...state.tasks, newTask],
+            };
+        }
+        case 'UPDATE_TASK_STATUS':
+            return {
+                ...state,
+                tasks: state.tasks.map(t =>
+                    t.id === action.payload.taskId ? { ...t, status: action.payload.status } : t
+                ),
+            };
+        case 'UPDATE_TASK':
+            return {
+                ...state,
+                tasks: state.tasks.map(t =>
+                    t.id === action.payload.taskId ? { ...t, ...action.payload.updates } : t
+                ),
+            };
+        case 'DELETE_TASK':
+            return {
+                ...state,
+                tasks: state.tasks.filter(t => t.id !== action.payload.taskId),
+            };
+        case 'ADD_TEMPLATE': {
+            const newTemplate = createTemplate(action.payload, action.payload.user);
+            return {
+                ...state,
+                templates: [...state.templates, newTemplate],
+            };
+        }
+        case 'UPDATE_TEMPLATE': {
+            const now = new Date().toISOString();
+            return {
+                ...state,
+                templates: state.templates.map(t =>
+                    t.id === action.payload.template.id
+                        ? { ...action.payload.template, updatedAt: now, lastModifiedBy: action.payload.user.name }
+                        : t
+                ),
+            };
+        }
+        case 'DELETE_TEMPLATE':
+            return {
+                ...state,
+                templates: state.templates.filter(t => t.id !== action.payload),
+            };
         case 'ADD_NOTIFICATION':
             return {
                 ...state,
-                notifications: [...state.notifications, { id: Date.now(), ...action.payload }],
+                notifications: [...state.notifications, { ...action.payload, id: Date.now() }],
             };
         case 'REMOVE_NOTIFICATION':
             return {
@@ -360,31 +374,21 @@ const appReducer = (state: AppState, action: Action): AppState => {
         case 'AI_SEARCH_START':
             return { ...state, isAiSearching: true };
         case 'AI_SEARCH_SUCCESS':
-            return { 
-                ...state, 
-                isAiSearching: false, 
-                aiSearchResultIds: action.payload,
-                // also reset other filters and selection for a clean search result view
-                selectedItemId: action.payload.length > 0 ? action.payload[0] : null,
-                filterStatus: 'all',
-                filterTag: 'all',
-            };
+            return { ...state, aiSearchResultIds: action.payload, isAiSearching: false };
         case 'AI_SEARCH_CLEAR':
             return { ...state, aiSearchResultIds: null, isAiSearching: false };
         case 'UPDATE_APP_SETTINGS':
-            return {
-                ...state,
-                appSettings: { ...state.appSettings, ...action.payload },
-            };
+            return { ...state, appSettings: { ...state.appSettings, ...action.payload } };
         default:
             return state;
     }
 };
 
-// 5. Context and Provider
-const AppStateContext = createContext<AppState>(initialState);
-const AppDispatchContext = createContext<Dispatch<Action>>(() => null);
+// 5. Create Contexts
+const AppStateContext = createContext<AppState | undefined>(undefined);
+const AppDispatchContext = createContext<Dispatch<Action> | undefined>(undefined);
 
+// 6. Provider Component
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [state, dispatch] = useReducer(appReducer, initialState);
 
@@ -397,6 +401,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
 };
 
-// 6. Custom Hooks
-export const useAppState = () => useContext(AppStateContext);
-export const useAppDispatch = () => useContext(AppDispatchContext);
+// 7. Custom Hooks
+export const useAppState = (): AppState => {
+    const context = useContext(AppStateContext);
+    if (context === undefined) {
+        throw new Error('useAppState must be used within an AppProvider');
+    }
+    return context;
+};
+
+export const useAppDispatch = (): Dispatch<Action> => {
+    const context = useContext(AppDispatchContext);
+    if (context === undefined) {
+        throw new Error('useAppDispatch must be used within an AppProvider');
+    }
+    return context;
+};
